@@ -1,0 +1,34 @@
+[package]
+name = "shutdown-guard-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["OneOh Cloud LLC <dev@oneoh.cloud>"]
+description = "A cross-platform library for registering cleanup callbacks before system shutdown"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/OneOhCloud/shutdown-guard-rs"
+keywords = ["shutdown", "cleanup", "system", "cross-platform"]
+categories = ["os", "api-bindings"]
+
+[dependencies]
+lazy_static = "1.4"
+parking_lot = "0.12"
+chrono = "0.4"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "0.2"
+cocoa = "0.25"
+objc-foundation = "0.1"
+libc = "0.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.52", features = ["Win32_System_Shutdown", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus = "0.9"
+
+[dev-dependencies]
+tokio = { version = "1.35", features = ["full"] }
+
+[[example]]
+name = "shutdown_demo"
+path = "examples/shutdown_demo.rs"
