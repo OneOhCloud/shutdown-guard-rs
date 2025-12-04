@@ -91,7 +91,8 @@ extern "C" fn handle_shutdown_signal(
 
     // Execute callbacks - note: this is NOT signal-safe but we need it for functionality
     unsafe {
-        if let Some(callbacks) = &GLOBAL_CALLBACKS {
+        let callbacks_ptr = std::ptr::addr_of!(GLOBAL_CALLBACKS);
+        if let Some(callbacks) = (*callbacks_ptr).as_ref() {
             // Try to lock, but don't block forever
             if let Some(callbacks_lock) = callbacks.try_read() {
                 for callback in callbacks_lock.iter() {

@@ -21,10 +21,15 @@ objc-foundation = "0.1"
 libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.52", features = ["Win32_System_Shutdown", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+windows = { version = "0.62", features = ["Win32_System_Console", "Win32_Foundation"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-dbus = "0.9"
+dbus = { version = "0.9", optional = true }
+libc = "0.2"
+
+[features]
+default = []
+dbus-support = ["dbus"]
 
 [dev-dependencies]
 tokio = { version = "1.35", features = ["full"] }

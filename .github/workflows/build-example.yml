@@ -1,0 +1,127 @@
+name: Build Shutdown Demo
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            artifact_name: shutdown_demo-linux
+            binary_path: target/release/examples/shutdown_demo
+          - os: macos-latest
+            artifact_name: shutdown_demo-macos
+            binary_path: target/release/examples/shutdown_demo
+          - os: windows-latest
+            artifact_name: shutdown_demo-windows
+            binary_path: target/release/examples/shutdown_demo.exe
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
+
+    - name: Install dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libdbus-1-dev pkg-config
+
+    - name: Remove cross-compilation config for native builds
+      run: |
+        if [ -f .cargo/config.toml ]; then
+          echo "Backing up .cargo/config.toml"
+          mv .cargo/config.toml .cargo/config.toml.bak
+        fi
+      shell: bash
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache target directory
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build example (release)
+      run: cargo build --release --example shutdown_demo
+
+    - name: Test run (dry run)
+      if: runner.os != 'Windows'
+      run: timeout 5 ./target/release/examples/shutdown_demo || true
+
+    - name: Test run (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $job = Start-Job -ScriptBlock { & ".\target\release\examples\shutdown_demo.exe" }
+        Start-Sleep -Seconds 5
+        Stop-Job $job
+        Remove-Job $job
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.binary_path }}
+        if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+      
+    - name: Display structure of downloaded files
+      run: ls -R artifacts/
+      
+    - name: Rename artifacts for release
+      run: |
+        mv artifacts/shutdown_demo-linux/shutdown_demo artifacts/shutdown_demo-linux/shutdown_demo-linux
+        mv artifacts/shutdown_demo-macos/shutdown_demo artifacts/shutdown_demo-macos/shutdown_demo-macos
+      
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          artifacts/shutdown_demo-linux/shutdown_demo-linux
+          artifacts/shutdown_demo-macos/shutdown_demo-macos
+          artifacts/shutdown_demo-windows/shutdown_demo.exe
+        draft: false
+        prerelease: false

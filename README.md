@@ -5,7 +5,7 @@ Cross-platform Rust library for executing cleanup callbacks before system shutdo
 ## Usage
 
 ```rust
-use shutdown_guard::ShutdownGuard;
+use shutdown_guard_rs::ShutdownGuard;
 
 let guard = ShutdownGuard::new();
 guard.register(Box::new(|| {
@@ -42,6 +42,48 @@ cargo run --example shutdown_demo
 # Test
 cargo test
 ```
+
+### Cross-compilation on macOS
+
+#### Option 1: Using cargo-zigbuild (Recommended - No Docker needed)
+
+**Prerequisites:**
+```bash
+brew install zig
+cargo install cargo-zigbuild
+rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu
+```
+
+**Build all platforms:**
+```bash
+./build-all-zig.sh
+```
+
+**Manual builds:**
+```bash
+# macOS (native)
+cargo build --release --example shutdown_demo
+
+# Linux
+cargo zigbuild --release --example shutdown_demo --target x86_64-unknown-linux-gnu
+
+# Windows
+cargo zigbuild --release --example shutdown_demo --target x86_64-pc-windows-gnu
+```
+
+#### Option 2: Using cross with Docker
+
+**Prerequisites:**
+1. Install Docker Desktop for macOS and start it
+2. Install cross: `cargo install cross --git https://github.com/cross-rs/cross`
+3. Add targets: `rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu`
+
+**Build all platforms:**
+```bash
+./build-all.sh
+```
+
+**Note:** The `cargo-zigbuild` method is simpler as it doesn't require Docker.
 
 ## Platform Support
 

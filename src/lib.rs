@@ -5,7 +5,7 @@
 //! ## Example
 //!
 //! ```rust
-//! use shutdown_guard::{ShutdownGuard, ShutdownCallback};
+//! use shutdown_guard_rs::{ShutdownGuard, ShutdownCallback};
 //!
 //! fn main() {
 //!     let guard = ShutdownGuard::new();
@@ -83,7 +83,7 @@ impl ShutdownGuard {
     /// the platform-specific implementation failed to initialize.
     pub fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
         let callbacks = Arc::clone(&self.callbacks);
-        platform::start_monitoring(callbacks)
+        platform::start_monitoring(callbacks).map_err(|e| e.into())
     }
 
     /// Executes all registered callbacks

@@ -1,90 +1,52 @@
-//! Windows platform-specific implementation using Windows API
+//! Windows platform-specific implementation using Console Control Handler
 
 use crate::ShutdownCallback;
 use parking_lot::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use windows::core::*;
-use windows::Win32::Foundation::*;
-use windows::Win32::System::Shutdown::*;
-use windows::Win32::UI::WindowsAndMessaging::*;
+use windows::core::BOOL;
+use windows::Win32::System::Console::*;
 
 static mut GLOBAL_CALLBACKS: Option<Arc<RwLock<Vec<ShutdownCallback>>>> = None;
+static HANDLER_CALLED: AtomicBool = AtomicBool::new(false);
 
 /// Starts monitoring for Windows shutdown events
 pub fn start_monitoring(
     callbacks: Arc<RwLock<Vec<ShutdownCallback>>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     unsafe {
         GLOBAL_CALLBACKS = Some(callbacks);
 
-        // Create a hidden window to receive shutdown messages
-        std::thread::spawn(|| {
-            if let Err(e) = create_message_window() {
-                eprintln!("Failed to create message window: {}", e);
+        SetConsoleCtrlHandler(Some(console_ctrl_handler), true)
+            .map_err(|e| format!("Failed to set console control handler: {}", e))?;
+
+        println!("Windows shutdown monitoring active (using Console Control Handler)");
+    }
+
+    Ok(())
+}
+
+unsafe extern "system" fn console_ctrl_handler(ctrl_type: u32) -> BOOL {
+    // Only handle shutdown events, not Ctrl+C
+    match ctrl_type {
+        CTRL_SHUTDOWN_EVENT | CTRL_LOGOFF_EVENT | CTRL_CLOSE_EVENT => {
+            // Avoid executing multiple times
+            if HANDLER_CALLED.swap(true, Ordering::SeqCst) {
+                return BOOL(1);
             }
-        });
-    }
 
-    Ok(())
-}
-
-unsafe fn create_message_window() -> Result<()> {
-    let class_name = w!("ShutdownGuardWindowClass");
-
-    let wc = WNDCLASSW {
-        lpfnWndProc: Some(window_proc),
-        lpszClassName: class_name,
-        ..Default::default()
-    };
-
-    RegisterClassW(&wc);
-
-    let hwnd = CreateWindowExW(
-        WINDOW_EX_STYLE(0),
-        class_name,
-        w!("ShutdownGuard"),
-        WINDOW_STYLE(0),
-        0,
-        0,
-        0,
-        0,
-        HWND(0),
-        None,
-        None,
-        None,
-    );
-
-    if hwnd.0 == 0 {
-        return Err(Error::from_win32());
-    }
-
-    // Message loop
-    let mut msg = MSG::default();
-    while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-    }
-
-    Ok(())
-}
-
-unsafe extern "system" fn window_proc(
-    hwnd: HWND,
-    msg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    match msg {
-        WM_QUERYENDSESSION | WM_ENDSESSION => {
             // Execute all registered callbacks
-            if let Some(callbacks) = &GLOBAL_CALLBACKS {
-                let callbacks_lock = callbacks.read();
-                for callback in callbacks_lock.iter() {
-                    callback();
+            let callbacks_ptr = std::ptr::addr_of!(GLOBAL_CALLBACKS);
+            if let Some(callbacks) = (*callbacks_ptr).as_ref() {
+                if let Some(callbacks_lock) = callbacks.try_read() {
+                    for callback in callbacks_lock.iter() {
+                        callback();
+                    }
                 }
             }
-            LRESULT(1) // Allow shutdown to proceed
+
+            BOOL(1)
         }
-        _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+        _ => BOOL(0),
     }
 }
